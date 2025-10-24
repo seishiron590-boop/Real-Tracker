@@ -1,295 +1,255 @@
-// src/components/Layout/Sidebar.tsx
-import React, { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Chrome as Home, FolderOpen, DollarSign, Package, FileText, Users, Archive, Settings, User, IndianRupee, Layers, ShieldCheck, Hammer, Calendar, HardDrive, LayoutDashboard } from "lucide-react";
-import { useAuth } from "../../contexts/AuthContext";
-import { supabase } from "../../lib/supabase";
+import React from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import { LoginForm } from "./components/Auth/LoginForm";
+import { Dashboard } from "./pages/Dashboard";
+import { Projects } from "./pages/Projects";
+import { Expenses } from "./pages/Expenses";
+import { Materials } from "./pages/Materials";
+import { Reports } from "./pages/Reports";
+import { Phases } from "./pages/Phases";
+import { Users } from "./pages/Users";
+import { Documents } from "./pages/Documents";
+import { RoleManagement } from "./pages/RoleManagement";
+import { Profile } from "./pages/Profile";
+import { Renovations } from "./pages/Renovations";
+import ResetPassword from "./pages/ResetPassword";
+import LandingPage from "./pages/LandingPage";
+import { AdminPayment } from "./pages/AdminPayment";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
+import Support from "./pages/Support";
+import { SharedProject } from './pages/SharedProject';
+import { Settings } from './pages/Settings';
+import { Calendar } from './pages/Calender';
+import { UserFirstLogin } from './pages/UserFirstLogin';
+import { DynamicDashboard } from './pages/DynamicDashboard';
+import { DashboardBuilder } from './pages/DashboardBuilder';
 
-const STORAGE_LIMITS = {
-  free: 800,
-  basic: 3072,
-  pro: -1
-};
+// Loading component
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="text-center">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-slate-600 dark:text-slate-400">Loading...</p>
+      </div>
+    </div>
+  );
+}
 
-export function Sidebar() {
-  const location = useLocation();
-  const { userRole, permissions, user } = useAuth();
-  const [rolePermissions, setRolePermissions] = useState<string[]>([]);
-  const [userPlan, setUserPlan] = useState<'free' | 'basic' | 'pro'>('free');
-  const [storageUsed, setStorageUsed] = useState(0);
-  const [isLoadingPermissions, setIsLoadingPermissions] = useState(true);
+// Generalized ProtectedRoute for roles
+function ProtectedRoute({
+  children,
+  requiredPermission,
+}: {
+  children: React.ReactNode;
+  requiredPermission?: string;
+}) {
+  const { user, loading, permissions, userRole } = useAuth();
 
-  useEffect(() => {
-    async function fetchRolePermissions() {
-      if (userRole && user) {
-        setIsLoadingPermissions(true);
-        
-        // Fetch the role and its permissions
-        const { data, error } = await supabase
-          .from("roles")
-          .select("permissions, role_name")
-          .eq("role_name", userRole)
-          .eq("is_active", true)
-          .maybeSingle();
+  if (loading) {
+    return <LoadingScreen />;
+  }
 
-        console.log('Fetching permissions for role:', userRole);
-        console.log('Role data:', data);
-        console.log('Role error:', error);
+  if (!user) return <Navigate to="/login" replace />;
 
-        if (!error && data) {
-          setRolePermissions(data.permissions || []);
-          console.log('Loaded permissions:', data.permissions);
-        } else {
-          console.error('Failed to load role permissions:', error);
-          setRolePermissions([]);
-        }
-        
-        setIsLoadingPermissions(false);
-      }
-    }
+  // Admin always has access
+  if (userRole === 'Admin') {
+    return <>{children}</>;
+  }
 
-    fetchRolePermissions();
-  }, [userRole, user]);
+  if (requiredPermission && !permissions.includes(requiredPermission)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
-  useEffect(() => {
-    if (user) {
-      fetchStorageInfo(user.id);
-    }
-  }, [user]);
+  return <>{children}</>;
+}
 
-  const fetchStorageInfo = async (userId: string) => {
-    try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('plan_type')
-        .eq('id', userId)
-        .single();
+// App Routes Component
+function AppRoutes() {
+  const { user, loading, userRole } = useAuth();
 
-      setUserPlan(profile?.plan_type || 'free');
-
-      const { data: projectsData } = await supabase
-        .from('projects')
-        .select('id')
-        .eq('created_by', userId);
-
-      const { data: photosData } = await supabase
-        .from('phase_photos')
-        .select('id')
-        .eq('created_by', userId);
-
-      const projectStorage = (projectsData?.length || 0) * 10;
-      const photoStorage = (photosData?.length || 0) * 2;
-      setStorageUsed(projectStorage + photoStorage);
-    } catch (error) {
-      console.error('Error fetching storage:', error);
-    }
-  };
-
-  const hasPermission = (requiredPermission: string | string[]) => {
-    // Admin always has access
-    if (userRole === "Admin") {
-      console.log('Admin user - granting access to:', requiredPermission);
-      return true;
-    }
-
-    // Check if loading
-    if (isLoadingPermissions) {
-      return false;
-    }
-
-    // Check permissions
-    if (Array.isArray(requiredPermission)) {
-      const hasAccess = requiredPermission.some(perm => rolePermissions.includes(perm));
-      console.log('Checking array permissions:', requiredPermission, 'Has access:', hasAccess);
-      return hasAccess;
-    }
-
-    const hasAccess = rolePermissions.includes(requiredPermission);
-    console.log('Checking permission:', requiredPermission, 'Has access:', hasAccess);
-    return hasAccess;
-  };
-
-  const navigationItems = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: Home,
-      permission: "view_dashboard",
-    },
-    {
-      name: "Projects",
-      href: "/projects",
-      icon: FolderOpen,
-      permission: "view_projects",
-    },
-    {
-      name: "Phases",
-      href: "/phases",
-      icon: Layers,
-      permission: "view_phases",
-    },
-    {
-      name: "Expenses",
-      href: "/expenses",
-      icon: IndianRupee,
-      permission: "view_expenses",
-    },
-    {
-      name: "Materials",
-      href: "/materials",
-      icon: Package,
-      permission: "view_materials",
-    },
-    {
-      name: "Reports",
-      href: "/reports",
-      icon: FileText,
-      permission: "view_reports",
-    },
-    {
-      name: "Calendar",
-      href: "/calendar",
-      icon: Calendar,
-      permission: "view_calendar",
-    },
-    {
-      name: "Document Archive",
-      href: "/documents",
-      icon: Archive,
-      permission: "view_documents",
-    },
-    {
-      name: "Profile",
-      href: "/profile",
-      icon: User,
-      permission: null,
-    },
-    {
-      name: "Users",
-      href: "/users",
-      icon: Users,
-      permission: "view_users",
-    },
-    {
-      name: "Role Management",
-      href: "/roles",
-      icon: ShieldCheck,
-      permission: "view_roles",
-    },
-    {
-      name: "Dashboard Builder",
-      href: "/dashboard-builder",
-      icon: LayoutDashboard,
-      permission: "view_roles", // Only admins
-    },
-    {
-      name: "Admin Dashboard",
-      href: "/admin-dashboard",
-      icon: LayoutDashboard,
-      permission: "view_roles", // Only admins can see the full admin dashboard
-    },
-    {
-      name: "Settings",
-      href: "/settings",
-      icon: Settings,
-      permission: "view_settings",
-    },
-  ];
-
-  const filteredItems = navigationItems.filter((item) => {
-    // Profile and Dashboard are always accessible
-    if (!item.permission) return true;
-
-    // Check if user has the required permission
-    return hasPermission(item.permission);
-  });
-
-  const getStorageLimit = () => {
-    const limit = STORAGE_LIMITS[userPlan];
-    return limit === -1 ? '∞' : `${limit}MB`;
-  };
-
-  const getStoragePercentage = () => {
-    const limit = STORAGE_LIMITS[userPlan];
-    if (limit === -1) return 0;
-    return Math.min((storageUsed / limit) * 100, 100);
-  };
-
-  // Show loading state
-  if (isLoadingPermissions) {
-    return (
-      <aside className="w-64 bg-white shadow-lg border-r border-gray-200 fixed left-0 top-0 h-full z-30 flex flex-col">
-        <div className="p-6">
-          <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="BuildMyHomes Logo" className="w-10 h-10 object-contain" />
-            <h2 className="text-xl font-bold text-gray-800">Buildmyhomes</h2>
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-gray-500">Loading...</div>
-        </div>
-      </aside>
-    );
+  if (loading) {
+    return <LoadingScreen />;
   }
 
   return (
-    <aside className="w-64 bg-white shadow-lg border-r border-gray-200 fixed left-0 top-0 h-full z-30 flex flex-col">
-      <div className="p-6">
-        <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="BuildMyHomes Logo" className="w-10 h-10 object-contain" />
-          <h2 className="text-xl font-bold text-gray-800">Buildmyhomes</h2>
-        </div>
-      </div>
+    <Routes>
+      {/* Public pages */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <LandingPage />} />
+      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginForm />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/support" element={<Support />} />
+      
+      {/* Shared project page - accessible without authentication */}
+      <Route path="/shared/:shareId" element={<SharedProject />} />
 
-      <nav className="px-4 flex-1 overflow-y-auto">
-        <ul className="space-y-2">
-          {filteredItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.href;
+      {/* User first login - match email link URL */}
+      <Route path="/user-setup" element={<UserFirstLogin />} />
+      <Route path="/first-login" element={<UserFirstLogin />} />
 
-            return (
-              <li key={item.name}>
-                <Link
-                  to={item.href}
-                  className={`flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-blue-50 text-blue-700 border-r-2 border-blue-700"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
-                >
-                  <Icon className="w-5 h-5 mr-3" />
-                  {item.name}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      {/* Dashboard - NOW USES DynamicDashboard */}
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            {userRole === 'Admin' ? <Dashboard /> : <DynamicDashboard />}
+          </ProtectedRoute>
+        }
+      />
 
-      {/* Storage Indicator */}
-      <div className="p-4 border-t border-gray-200 bg-gray-50">
-        <div className="flex items-center gap-2 mb-2">
-          <HardDrive className="w-4 h-4 text-gray-600" />
-          <span className="text-xs font-medium text-gray-700">Storage</span>
-        </div>
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs text-gray-600">
-            <span>{storageUsed}MB</span>
-            <span>{getStorageLimit()}</span>
-          </div>
-          {userPlan !== 'pro' && (
-            <div className="w-full bg-gray-200 rounded-full h-1.5">
-              <div
-                className={`h-1.5 rounded-full transition-all ${
-                  getStoragePercentage() > 80 ? 'bg-red-500' : 'bg-blue-500'
-                }`}
-                style={{ width: `${getStoragePercentage()}%` }}
-              />
-            </div>
-          )}
-          <p className="text-xs text-gray-500 capitalize">{userPlan} Plan</p>
-        </div>
-      </div>
-    </aside>
+      {/* Dashboard Builder - Admin only */}
+      <Route
+        path="/dashboard-builder"
+        element={
+          <ProtectedRoute requiredPermission="view_roles">
+            <DashboardBuilder />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin dashboard - Admin only */}
+      <Route
+        path="/admin-dashboard"
+        element={
+          <ProtectedRoute requiredPermission="view_roles">
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Permission-based pages */}
+      <Route
+        path="/projects"
+        element={
+          <ProtectedRoute requiredPermission="view_projects">
+            <Projects />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/phases"
+        element={
+          <ProtectedRoute requiredPermission="view_phases">
+            <Phases />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/expenses"
+        element={
+          <ProtectedRoute requiredPermission="view_expenses">
+            <Expenses />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/materials"
+        element={
+          <ProtectedRoute requiredPermission="view_materials">
+            <Materials />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute requiredPermission="view_reports">
+            <Reports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/documents"
+        element={
+          <ProtectedRoute requiredPermission="view_documents">
+            <Documents />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute requiredPermission="view_settings">
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/calendar"
+        element={
+          <ProtectedRoute requiredPermission="view_calendar">
+            <Calendar />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Permission-based management pages */}
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute requiredPermission="view_users">
+            <Users />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/roles"
+        element={
+          <ProtectedRoute requiredPermission="view_roles">
+            <RoleManagement />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Renovation page */}
+      <Route
+        path="/renovations"
+        element={
+          <ProtectedRoute>
+            <Renovations />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Payment page */}
+      <Route
+        path="/admin/payment"
+        element={
+          <ProtectedRoute>
+            <AdminPayment />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Catch-all redirect */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
+
+function App() {
+  return (
+    <AuthProvider>
+      <ThemeProvider>
+        <Router>
+          <AppRoutes />
+        </Router>
+      </ThemeProvider>
+    </AuthProvider>
+  );
+}
+
+export default App;
